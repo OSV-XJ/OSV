@@ -1,0 +1,118 @@
+#-*-Makefile-*-
+#
+# Makefile fragment for JOS kernel.
+# This is NOT a complete makefile;
+# you must run GNU make in the top-level directory
+# where the GNUmakefile is located.
+#
+
+OBJDIRS += kern
+
+KERN_LDFLAGS := $(LDFLAGS) -N -e _start -T kern/kernel.ld -nostdlib
+
+# entry.S must be first, so that it's the first code in the text segment!!!
+#
+# We also snatch the use of a couple handy source files
+# from the lib directory, to avoid gratuitous code duplication.
+
+KERN_SRCFILES := kern/entry.S \
+			kern/head.S \
+			kern/svm_entry.S  \
+			kern/svm.c  \
+			kern/init.c \
+			kern/mp.c \
+			kern/detectmem.c \
+			kern/console.c \
+			kern/monitor.c \
+			kern/pmap.c \
+			kern/env.c \
+			kern/kclock.c \
+			kern/picirq.c \
+			kern/printf.c \
+			kern/trap.c \
+			kern/irq.c \
+			kern/trapentry.S \
+			kern/sched.c \
+			kern/syscall.c \
+			kern/apic.c	\
+			kern/acpi.c \
+			kern/pci.c \
+			kern/iommu.c \
+			kern/kdebug.c \
+			kern/boot_linux.c \
+			kern/vmfile.c \
+			kern/nivmcall.c \
+			kern/gosmm.c \
+			kern/vmcall.c \
+			kern/vmmcons.c \
+			kern/domain.c \
+			kern/mmap.c \
+			kern/vmpt.c \
+			kern/percpu.c \
+			kern/npt.c \
+			kern/vmmsock.c \
+			kern/guest_syscall.c \
+			lib/printfmt.c \
+			lib/memcpy.c	\
+			lib/readline.c \
+			lib/string.c
+			#kern/vmcall.c \
+			#kern/vmfile.c \
+			#kern/gosmm.c \
+
+
+# Only build files if they exist.
+
+KERN_SRCFILES := $(wildcard $(KERN_SRCFILES))
+
+
+
+KERN_OBJFILES := $(patsubst %.c, $(OBJDIR)/%.o, $(KERN_SRCFILES))
+KERN_OBJFILES := $(patsubst %.S, $(OBJDIR)/%.o, $(KERN_OBJFILES))
+KERN_OBJFILES := $(patsubst $(OBJDIR)/lib/%, $(OBJDIR)/kern/%, $(KERN_OBJFILES))
+
+KERN_BUILTIN_OBJS := obj/kern/trampoline.o
+
+KERN_BINFILES := $(patsubst %, $(OBJDIR)/%, $(KERN_BINFILES))
+
+# How to build kernel object files
+
+$(OBJDIR)/kern/%.o: kern/%.c
+	@echo + cc $<
+	@mkdir -p $(@D)
+	$(V)$(CC) -nostdinc $(KERN_CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/kern/%.o: kern/%.S
+	@echo + as $<
+	@mkdir -p $(@D)
+	$(V)$(CC) -nostdinc $(KERN_CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/kern/%.o: lib/%.c
+	@echo + cc $<
+	@mkdir -p $(@D)
+	$(V)$(CC) -nostdinc $(KERN_CFLAGS) -c -o $@ $<
+
+# How to build the kernel itself
+$(OBJDIR)/kern/kernel: $(KERN_OBJFILES) $(KERN_BINFILES) $(KERN_BUILTIN_OBJS) kern/kernel.ld
+	@echo + ld $@
+	$(V)$(LD) -o $@ $(KERN_LDFLAGS) $(KERN_OBJFILES) $(KERN_BUILTIN_OBJS) $(GCC_LIB) -b binary $(KERN_BINFILES)
+
+# How to build the Bochs disk image
+$(OBJDIR)/kern/bochs.img: $(OBJDIR)/kern/kernel $(OBJDIR)/boot/boot $(OBJDIR)/boot/setup
+	@echo + mk $@
+	$(V)dd if=/dev/zero of=$(OBJDIR)/kern/bochs.img~ count=10000 
+	$(V)dd if=$(OBJDIR)/boot/boot of=obj/kern/bochs.img~ conv=notrunc 
+	$(V)dd if=$(OBJDIR)/boot/setup of=obj/kern/bochs.img~ seek=1 conv=notrunc 
+	chmod +x boot/offset.pl
+	$(V)dd if=$(OBJDIR)/kern/kernel of=obj/kern/bochs.img~ seek=$(shell boot/offset.pl obj/boot/setup) conv=notrunc 
+	$(V)mv $(OBJDIR)/kern/bochs.img~ $(OBJDIR)/kern/bochs.img
+
+all: $(OBJDIR)/kern/bochs.img
+	#	cp $(OBJDIR)/kern/kernel /boot/hgj/kernel.svm
+
+scp: $(OBJDIR)/kern/bochs.img
+	$(V)scp $(OBJDIR)/kern/kernel renjb@202.117.10.248:/tftpboot/renjb/kernel.svm
+
+cp: $(OBJDIR)/kern/bochs.img
+	$(V)cp $(OBJDIR)/kern/kernel /tftpboot/yuehud/kernel
+

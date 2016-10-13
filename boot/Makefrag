@@ -1,0 +1,55 @@
+#-*-Makefile-*-
+#this is the makefile
+
+TRAMPOLINE_OBJ := obj/boot/trampoline.o \
+						obj/boot/copy.o \
+						obj/boot/tty.o  \
+						obj/boot/video-vesa.o \
+						obj/boot/edd.o \
+						obj/boot/apm.o \
+						obj/boot/mca.o \
+						obj/boot/video.o \
+						obj/boot/voyager.o \
+						obj/boot/string.o \
+						obj/boot/video-bios.o \
+						obj/boot/video-vga.o \
+						obj/boot/printf.o \
+						obj/boot/memory.o \
+						obj/boot/linux_param.o
+
+OFFSET := $(shell boot/offset.pl obj/boot/setup)
+
+obj/boot/setup:  boot/setup.S boot/csetup.c  boot/diskboot.c
+	@mkdir -p obj/kern
+	@mkdir -p obj/boot
+	$(CC) -nostdinc -c $(CFLAGS) -m32 -o obj/boot/setup.o boot/setup.S
+	$(CC) -nostdinc -c $(CFLAGS) -m32 -DJOS_KARCH_amd64 -o obj/boot/diskboot.o boot/diskboot.c
+	$(CC) -nostdinc -c $(CFLAGS) -m32 -DJOS_KARCH_amd64 -o obj/boot/csetup.o boot/csetup.c
+	$(LD) -melf_i386 -N -e _start -Ttext 0x0 -o obj/boot/setup.out obj/boot/setup.o obj/boot/csetup.o obj/boot/diskboot.o
+	$(OBJCOPY) -S -O binary obj/boot/setup.out obj/boot/setup
+	@echo "kernsize to setup"
+	chmod +x boot/kernsize.pl
+	boot/kernsize.pl obj/kern/kernel obj/boot/setup
+
+obj/boot/%.o: boot/%.c boot/Makefrag
+	@mkdir -p obj/boot
+	$(CC) -nostdinc -c $(CFLAGS) -m32 -I/boot-D__KERNEL__ -U__ASSEMBLY__ -o $@ $<
+
+obj/boot/%.o: boot/%.S boot/Makefrag
+	@mkdir -p obj/boot
+	$(CC) -nostdinc -c $(CFLAGS) -m32 -D__KERNEL__ -D__ASSEMBLER__ -o $@ $<
+
+obj/boot/trampline: $(TRAMPOLINE_OBJ)
+	$(LD) -melf_i386 -N -nostdlib -e ap_boot -T boot/setup.ld -o obj/boot/trampoline.out $(TRAMPOLINE_OBJ)
+	mv obj/boot/trampoline.out obj/boot/trampoline
+	$(OBJCOPY) -S -O binary obj/boot/trampoline obj/boot/trampline
+
+obj/boot/boot: boot/boot.S obj/boot/setup
+	$(CC) -nostdinc -O1 -fno-builtin -c -o obj/boot/boot.o boot/boot.S
+	$(OBJCOPY) -S -O binary obj/boot/boot.o obj/boot/boot
+
+obj/kern/trampoline.o: obj/boot/trampline
+	$(OBJCOPY) -I binary -O elf64-x86-64 -B i386 obj/boot/trampline obj/kern/trampoline.o
+
+
+

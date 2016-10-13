@@ -1,0 +1,108 @@
+boot loader load kernel and initrd(as a ramdisk)
+
+The cmdline is copied by the kernel to the boot_params structure.
+
+Some bios routines are used to query the machine arch. All these query results 
+are stored in the boot_params structure.
+
+After the query, just a jmp to protect mode. here are the steps:
+1. real mode switch hook....?
+2. move the kernel to the place if the kernel is no bzimage
+3. reset coprocessor
+4. mask all interrupts in pic
+5. set up idt and gdt
+6. long jump(to the arch/kernel/head.S   startup_32)
+
+A suggested virtualizing func:
+1. using the grub get the kernel and the initrd...
+2. vmm moves the kernel and initrd around. vmm sits at the top of mem
+3. vmm copy prepares the boot_params for the linux(may be simple or may not).
+4. sitting the boot_params at the right place.
+5. preparing the vmcb structure which the long jump is the entry of the guest.
+6. vmrun......(god bless u).
+
+The bios routines linux used are listed here:
+1. 0x15 ah=0xec (tell the bios what the cpu what to run... the linux says)
+2. 0x15 ax=0xe801  (detect the mem map)
+3. 0x16 ax=0x0305 (set the keyboard repeat rate)
+4. 0x10(maybe, not sure) , here a little complicated, all in all detect the vido
+	mode the linux intend to be
+5. 0x15 ah=0xc0, (query the Micro Channel Architeture Support)
+6. 0x15 ax=0xffc0, VOYAGER....?
+7. 0x15 ax=0xe980 (query the ist info)
+8. 0x15 ax=0x5c00 (query teh APM bios)
+9. 0x13 ....disk option EDD
+
+
+All  these infomation can be prepared by the vmm then copied to the boot_params structre. 
+
+We can borrow the linux code for preparing the boot_structure.
+
+_______________________________________________________________________________
+
+
+For the Linux SMP boot.....
+
+Boot sequence for BP:
+arch/boot/header.S 			_start
+										|
+										|
+						  			  \|/
+arch/boot/main.c   			 main
+										|
+										|
+						 			  \|/
+arch/kernel/head.S 			startup_32
+										|
+										|
+									  \|/
+									jmp 3f(bypass the smp boot code to the enable paging)
+										|
+										|
+									  \|/
+                      		setup_idt
+										|
+										|
+									  \|/
+									check_cpu_type(returned by setup_idt)
+										|
+										|
+									  \|/
+init/main.c						start_kernel(the BP here, but ap goed to the initiallize_secondary)
+										|
+										|
+									  \|/
+arch/kernel/setup.c 			setup_arch
+										|
+										|
+									  \|/
+									setup_bootmem_allocator
+										|
+										|
+									  \|/
+arch/kernel/mpparse.c		fine_smp_config
+										|
+										|
+									  \|/
+init/main.c						kernel_thread, init()
+										.
+										......
+
+An ACPI table and mp spec table may be provided by the vmm to hide the exact cpu config and mem config for linux
+
+
+__________________________________________________________________________________________________
+
+First Step: using our vmm to boot the linux directly, vmrun used and prepare the vmcb, no vturalization.
+	1. vmcb initialization
+	2. Nested Page Table?
+	3. ASID Tagged TLB
+
+Second Step: preparing the boot_params or simulate the biso using the svm mechnism
+
+Third Step: ACPI table simulate and so as mp table,  controling the resources used by the guest(cpu mem).
+
+
+
+										
+																	
